@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <title>Salesforce Quiz — Play</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body class="player-body">
+    <div id="app" class="player-main">
+      <p class="muted">Loading…</p>
+    </div>
+
+    <script type="module">
+      import {
+        isConfigured, makeId,
+        metaRef, playerRef, answerRef, playersRef,
+        set, update, get, onValue, serverTimestamp,
+      } from "./js/db.js";
+      import { questions } from "./js/questions.js";
+
+      const app = document.getElementById("app");
+      const GLYPHS = ["A", "B", "C", "D"];
+      const CLASSES = ["a", "b", "c", "d"];
+
+      if (!isConfigured) {
+        app.innerHTML = `<div class="big-msg">⚙️ Not configured yet.<br/>Ask the host to set up Firebase.</div>`;
+        throw new Error("Not configured");
+      }
+
+      // persistent identity for this phone
+      let playerId = sessionStorage.getItem("sfq_id");
+      if (!playerId) {
+        playerId = makeId();
+        sessionStorage.setItem("sfq_id", playerId);
+      }
+
+      let pin = null;
+      let name = null;
+      let metaUnsub = null;
+      let lastState = null;
+      let lastQ = -1;
+      let myChoice = -1;
+      let questionShownAt = 0;
+
+      // PIN can be prefilled from the QR link (?pin=123456)
+      const urlPin = new URLSearchParams(location.search).get("pin");
+
+      renderJoin(urlPin || "");
+
+      // ---- join screen ----------------------------------------------------
+      function renderJoin(prefillPin, errMsg) {
+        app.classList.remove("player-main");
+        app.classList.add("player-join");
+        app.innerHTML = `
+          <div class="center">
+            <div class="cloud-badge" style="justify-content:center">☁ Salesforce Quiz</div>
+            <h1 style="font-size:2rem">Join the game</h1>
+          </div>
+          ${errMsg ? `<p class="err">${escape(errMsg)}</p>` : ""}
+          <input class="field" id="pin" inputmode="numeric" maxlength="6"
+                 placeholder="Game PIN" value="${escape(prefillPin)}" />
+          <input class="field" id="name" maxlength="18" placeholder="Your name" />
+          <button class="btn-primary" id="go">Enter</button>
+          <p class="tiny center">The PIN is shown on the host screen.</p>`;
+        const nameEl = document.getElementById("name");
+        if (prefillPin) nameEl.focus();
+        document.getElementById("go").onclick = join;
+        nameEl.addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+      }
+
+      async function join() {
+        const pinVal = document.getElementById("pin").value.trim();
+        const nameVal = document.getElementById("name").value.trim();
+        if (!/^\d{6}$/.test(pinVal)) return renderJoin(pinVal, "Enter the 6-digit PIN.");
+        if (!nameVal) return renderJoin(pinVal, "Enter your name.");
+
+        // verify the game exists
+        const metaSnap = await get(metaRef(pinVal));
+        if (!metaSnap.exists()) return renderJoin(pinVal, "No game found with that PIN.");
+
+        pin = pinVal;
+        name = nameVal;
+
+        await set(playerRef(pin, playerId), { name, score: 0 });
+        // Note: we deliberately do NOT remove the player on disconnect — phones
+        // lock/sleep constantly during a game and we want to keep their score.
+
+        subscribe();
+      }
+
+      // ---- subscribe to game state ---------------------------------------
+      function subscribe() {
+        app.classList.remove("player-join");
+        app.classList.add("player-main");
+        metaUnsub = onValue(metaRef(pin), (snap) => {
+          const meta = snap.val();
+          if (!meta) return renderWaiting("Game ended.");
+          handleMeta(meta);
+        });
+      }
+
+      function handleMeta(meta) {
+        const stateChanged = meta.state !== lastState || meta.currentQ !== lastQ;
+        lastState = meta.state;
+
+        if (meta.state === "lobby") {
+          renderWaiting("You're in! 🎉<br/>Waiting for the host to start…");
+        } else if (meta.state === "question") {
+          if (meta.currentQ !== lastQ) {
+            lastQ = meta.currentQ;
+            myChoice = -1;
+            questionShownAt = Date.now();
+            renderAnswerPad(meta.currentQ);
+          }
+        } else if (meta.state === "reveal") {
+          if (stateChanged) renderReveal(meta.currentQ);
+        } else if (meta.state === "leaderboard") {
+          if (stateChanged) renderStanding(false);
+        } else if (meta.state === "ended") {
+          if (stateChanged) renderStanding(true);
+        }
+      }
+
+      // ---- views ----------------------------------------------------------
+      function renderWaiting(msg) {
+        app.innerHTML = `
+          <div class="player-status">${escape(name || "")}</div>
+          <div class="big-msg">${msg}</div>`;
+      }
+
+      function renderAnswerPad(qIndex) {
+        const q = questions[qIndex];
+        app.innerHTML = `
+          <div class="player-status">Q${qIndex + 1} · ${escape(name)}</div>
+          <div class="tap-grid" id="grid">
+            ${q.options.map((_, i) => `
+              <button class="tap ${CLASSES[i]}" data-i="${i}">${GLYPHS[i]}</button>`).join("")}
+          </div>`;
+        document.querySelectorAll(".tap").forEach((btn) => {
+          btn.onclick = () => choose(qIndex, parseInt(btn.dataset.i, 10));
+        });
+      }
+
+      async function choose(qIndex, choice) {
+        if (myChoice !== -1) return; // lock after first tap
+        myChoice = choice;
+        const ms = Date.now() - questionShownAt;
+        await set(answerRef(pin, qIndex, playerId), {
+          choice,
+          ms,
+          name,
+        });
+        // visual lock
+        document.querySelectorAll(".tap").forEach((btn) => {
+          const i = parseInt(btn.dataset.i, 10);
+          btn.classList.toggle("chosen", i === choice);
+          btn.classList.toggle("faded", i !== choice);
+          btn.disabled = true;
+        });
+        const status = app.querySelector(".player-status");
+        if (status) status.innerHTML = `Answer locked in ✔ · ${escape(name)}`;
+      }
+
+      function renderReveal(qIndex) {
+        const q = questions[qIndex];
+        const gotIt = myChoice === q.correct;
+        const answered = myChoice !== -1;
+        app.innerHTML = `
+          <div class="big-msg ${answered ? (gotIt ? "result-correct" : "result-wrong") : ""}">
+            ${
+              !answered
+                ? "⏱ Too slow!<br/>The answer was <b>" + GLYPHS[q.correct] + "</b>"
+                : gotIt
+                ? "✅ Correct!"
+                : "❌ Not this time.<br/>It was <b>" + GLYPHS[q.correct] + "</b>"
+            }
+          </div>`;
+      }
+
+      async function renderStanding(isFinal) {
+        // fetch scores + compute my rank
+        const snap = await get(playersRef(pin));
+        const all = snap.val() || {};
+        const rows = Object.entries(all)
+          .map(([id, p]) => ({ id, name: p.name, score: p.score || 0 }))
+          .sort((a, b) => b.score - a.score);
+        const myRank = rows.findIndex((r) => r.id === playerId) + 1;
+        const me = rows.find((r) => r.id === playerId);
+        const myScore = me ? me.score : 0;
+
+        app.innerHTML = `
+          <div class="player-status">${escape(name)}</div>
+          <div class="big-msg" style="flex-direction:column;gap:10px">
+            <div style="font-size:3rem">${isFinal ? medal(myRank) : "#" + myRank}</div>
+            <div>${isFinal ? "Final position" : "Your position"}: <b>${myRank}</b> of ${rows.length}</div>
+            <div class="player-score">Score: <b>${myScore}</b></div>
+            ${isFinal ? '<div class="tiny">Thanks for playing! 👏</div>' : '<div class="tiny">Next question coming up…</div>'}
+          </div>`;
+      }
+
+      function medal(rank) {
+        return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "🏁";
+      }
+
+      function escape(s) {
+        return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[c]));
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salesforce Quiz — Host</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div class="wrap" id="app">
+      <p class="muted">Loading…</p>
+    </div>
+
+    <!-- QR code generator (small, offline-capable, MIT) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+    <script type="module">
+      import {
+        initDb, isConfigured, makePin,
+        metaRef, playersRef, answersRef,
+        set, update, get, onValue, serverTimestamp,
+      } from "./js/db.js";
+      import { questions, QUIZ_TITLE } from "./js/questions.js";
+
+      const app = document.getElementById("app");
+      const GLYPHS = ["A", "B", "C", "D"];
+      const CLASSES = ["a", "b", "c", "d"];
+
+      // ---- guard: config present? ----------------------------------------
+      if (!isConfigured) {
+        app.innerHTML = `
+          <div class="card">
+            <h2>⚙️ Almost there — configure Firebase</h2>
+            <p>Open <code>js/firebase-config.js</code> and replace every
+            <code>REPLACE_ME</code> with your Firebase project values.
+            See the <b>README</b> for the 5-minute walkthrough.</p>
+          </div>`;
+        throw new Error("Not configured");
+      }
+
+      // ---- create a game --------------------------------------------------
+      const pin = makePin();
+      const joinUrl = new URL("play.html", location.href).href;
+      let players = {};       // id -> {name, score}
+      let currentQ = -1;
+      let tickHandle = null;
+
+      await set(metaRef(pin), {
+        title: QUIZ_TITLE,
+        state: "lobby",
+        currentQ: -1,
+        totalQ: questions.length,
+        createdAt: serverTimestamp(),
+      });
+
+      // live player list
+      onValue(playersRef(pin), (snap) => {
+        players = snap.val() || {};
+        if (currentQ < 0) renderLobby();
+      });
+
+      // ---- rendering ------------------------------------------------------
+      function renderLobby() {
+        const list = Object.values(players);
+        app.innerHTML = `
+          <div class="host-top">
+            <div class="cloud-badge">☁ ${escape(QUIZ_TITLE)}</div>
+            <div class="pin-box">
+              <div class="label">Game PIN</div>
+              <div class="pin">${pin}</div>
+            </div>
+          </div>
+          <div class="card center">
+            <h2>Scan to join</h2>
+            <div class="join-panel">
+              <div class="qr-holder" id="qr"></div>
+              <div>
+                <p class="muted">Or go to</p>
+                <div class="join-url">${escape(joinUrl)}</div>
+                <p class="muted mt">and enter PIN <b>${pin}</b></p>
+              </div>
+            </div>
+            <div class="players" id="players">
+              ${list.length ? list.map((p) => `<span class="player-chip">${escape(p.name)}</span>`).join("") : '<span class="muted">Waiting for players…</span>'}
+            </div>
+            <div class="mt">
+              <button class="btn-primary" id="start" ${list.length ? "" : "disabled"}>
+                Start quiz ${list.length ? `(${list.length} player${list.length === 1 ? "" : "s"})` : ""}
+              </button>
+            </div>
+          </div>`;
+        drawQr(joinUrl + "?pin=" + pin);
+        const btn = document.getElementById("start");
+        if (btn) btn.onclick = () => nextQuestion();
+      }
+
+      let qr;
+      function drawQr(text) {
+        const el = document.getElementById("qr");
+        if (!el || typeof QRCode === "undefined") return;
+        el.innerHTML = "";
+        qr = new QRCode(el, { text, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+      }
+
+      function renderQuestion(qIndex) {
+        const q = questions[qIndex];
+        app.innerHTML = `
+          <div class="q-header">
+            <div class="q-counter">Question ${qIndex + 1} / ${questions.length}</div>
+            <div class="timer" id="timer">${q.time}</div>
+          </div>
+          <div class="q-text">${escape(q.text)}</div>
+          <div class="answers" id="answers">
+            ${q.options.map((opt, i) => `
+              <div class="answer ${CLASSES[i]}" data-i="${i}">
+                <span class="glyph">${GLYPHS[i]}</span>
+                <span>${escape(opt)}</span>
+                <span class="count" data-count="${i}"></span>
+              </div>`).join("")}
+          </div>
+          <div class="center mt">
+            <span class="muted" id="answered">0 answers in</span>
+          </div>`;
+        runTimer(qIndex, q.time);
+        watchAnswers(qIndex);
+      }
+
+      function renderReveal(qIndex) {
+        const q = questions[qIndex];
+        // tally
+        const answers = revealCache[qIndex] || {};
+        const counts = [0, 0, 0, 0];
+        Object.values(answers).forEach((a) => {
+          if (a.choice >= 0 && a.choice < 4) counts[a.choice]++;
+        });
+        app.innerHTML = `
+          <div class="q-header">
+            <div class="q-counter">Question ${qIndex + 1} / ${questions.length}</div>
+            <div class="timer">✓</div>
+          </div>
+          <div class="q-text">${escape(q.text)}</div>
+          <div class="answers">
+            ${q.options.map((opt, i) => `
+              <div class="answer ${CLASSES[i]} ${i === q.correct ? "correct" : "dim"}">
+                <span class="glyph">${GLYPHS[i]}</span>
+                <span>${escape(opt)}</span>
+                <span class="count">${counts[i]}</span>
+              </div>`).join("")}
+          </div>
+          <div class="center mt">
+            <button class="btn-primary" id="lb">Show leaderboard →</button>
+          </div>`;
+        document.getElementById("lb").onclick = () => showLeaderboard(qIndex);
+      }
+
+      function renderLeaderboard(qIndex, isFinal) {
+        const rows = Object.entries(players)
+          .map(([id, p]) => ({ id, name: p.name, score: p.score || 0 }))
+          .sort((a, b) => b.score - a.score);
+        const top = rows.slice(0, 8);
+        app.innerHTML = `
+          <div class="host-top">
+            <div class="cloud-badge">☁ ${escape(QUIZ_TITLE)}</div>
+            <h2 style="margin:0">${isFinal ? "🏆 Final results" : "Leaderboard"}</h2>
+          </div>
+          <div class="card">
+            <div class="leaderboard">
+              ${top.map((r, idx) => `
+                <div class="lb-row ${idx === 0 ? "top1" : ""}">
+                  <span class="rank">${idx + 1}</span>
+                  <span class="name">${escape(r.name)}</span>
+                  <span class="score">${r.score}</span>
+                </div>`).join("") || '<p class="muted">No scores yet.</p>'}
+            </div>
+            <div class="center mt">
+              ${
+                isFinal
+                  ? `<button class="btn-ghost" id="again">Play again (new game)</button>`
+                  : `<button class="btn-primary" id="next">Next question →</button>`
+              }
+            </div>
+          </div>`;
+        if (isFinal) {
+          document.getElementById("again").onclick = () => location.reload();
+        } else {
+          document.getElementById("next").onclick = () => nextQuestion();
+        }
+      }
+
+      // ---- flow controls --------------------------------------------------
+      async function nextQuestion() {
+        currentQ++;
+        if (currentQ >= questions.length) {
+          await update(metaRef(pin), { state: "ended", currentQ });
+          renderLeaderboard(currentQ, true);
+          return;
+        }
+        // reset per-question answer cache watcher
+        stopWatchAnswers();
+        await update(metaRef(pin), {
+          state: "question",
+          currentQ,
+          questionStartedAt: serverTimestamp(),
+        });
+        renderQuestion(currentQ);
+      }
+
+      function runTimer(qIndex, seconds) {
+        const timerEl = document.getElementById("timer");
+        let remaining = seconds;
+        if (tickHandle) clearInterval(tickHandle);
+        tickHandle = setInterval(async () => {
+          remaining--;
+          if (timerEl) {
+            timerEl.textContent = Math.max(0, remaining);
+            timerEl.classList.toggle("low", remaining <= 3);
+          }
+          if (remaining <= 0) {
+            clearInterval(tickHandle);
+            tickHandle = null;
+            await endQuestion(qIndex);
+          }
+        }, 1000);
+      }
+
+      // ---- answers watching + scoring ------------------------------------
+      const revealCache = {};   // qIndex -> answers object
+      let answersUnsub = null;
+
+      function watchAnswers(qIndex) {
+        const total = Object.keys(players).length;
+        answersUnsub = onValue(answersRef(pin, qIndex), (snap) => {
+          const answers = snap.val() || {};
+          revealCache[qIndex] = answers;
+          // update the "answers in" + per-option counts live
+          const counts = [0, 0, 0, 0];
+          Object.values(answers).forEach((a) => {
+            if (a.choice >= 0 && a.choice < 4) counts[a.choice]++;
+          });
+          const answeredEl = document.getElementById("answered");
+          if (answeredEl) {
+            const n = Object.keys(answers).length;
+            answeredEl.textContent = `${n} / ${total} answered`;
+            // everyone answered -> end early
+            if (total > 0 && n >= total && tickHandle) {
+              clearInterval(tickHandle);
+              tickHandle = null;
+              endQuestion(qIndex);
+            }
+          }
+        });
+      }
+      function stopWatchAnswers() {
+        if (answersUnsub) {
+          answersUnsub();
+          answersUnsub = null;
+        }
+      }
+
+      async function endQuestion(qIndex) {
+        stopWatchAnswers();
+        // fetch the definitive answer set + score it
+        const snap = await get(answersRef(pin, qIndex));
+        const answers = snap.val() || {};
+        revealCache[qIndex] = answers;
+        const q = questions[qIndex];
+
+        const updates = {};
+        for (const [id, a] of Object.entries(answers)) {
+          if (a.choice === q.correct) {
+            // speed bonus: full 1000 if instant, min 500 by the buzzer
+            const frac = Math.max(0, 1 - (a.ms || 0) / (q.time * 1000));
+            const gained = 500 + Math.round(500 * frac);
+            const prev = (players[id] && players[id].score) || 0;
+            updates[`${id}/score`] = prev + gained;
+            if (players[id]) players[id].score = prev + gained;
+          }
+        }
+        if (Object.keys(updates).length) await update(playersRef(pin), updates);
+
+        await update(metaRef(pin), { state: "reveal" });
+        renderReveal(qIndex);
+      }
+
+      async function showLeaderboard(qIndex) {
+        // make sure we have the freshest scores
+        const snap = await get(playersRef(pin));
+        players = snap.val() || players;
+        await update(metaRef(pin), { state: "leaderboard" });
+        renderLeaderboard(qIndex, false);
+      }
+
+      // ---- util -----------------------------------------------------------
+      function escape(s) {
+        return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[c]));
+      }
+
+      renderLobby();
+    </script>
+  </body>
+</html>
