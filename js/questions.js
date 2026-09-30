@@ -7,9 +7,25 @@
 //   - "time" is the countdown in seconds for that question (default 10).
 //   - Keep option text short so it reads well on a phone.
 //
+// IMAGES (optional) --------------------------------------------------------
+//   You can add pictures in two ways:
+//
+//   1. A picture ON THE QUESTION — shown big on the host screen above the
+//      answers. Add an "image" field with a path or URL:
+//         image: "img/salesforce-tower.jpg",
+//
+//   2. Pictures AS THE ANSWER OPTIONS — each option becomes an image tile on
+//      the host screen (phones still just tap the coloured A/B/C/D button).
+//      Use "optionImages" (array of 4 paths/URLs). You can still give short
+//      "options" text as a caption/fallback, or leave them as "".
+//         optionImages: ["img/logo-a.png","img/logo-b.png","img/logo-c.png","img/logo-d.png"],
+//
+//   Put image files in an "img/" folder next to these pages, or use full
+//   https:// URLs. Recommended: landscape ~1200px wide for question images,
+//   square ~400px for option images. See README "Adding pictures".
+//
 // A few answers below are marked  // TODO VERIFY  because they depend on your
-// internal naming / the exact figure you want to use — check these before the
-// session and adjust "correct" or the option text as needed.
+// internal naming / the exact figure you want — check these before the session.
 // ---------------------------------------------------------------------------
 
 export const QUIZ_TITLE = "Salesforce Quiz";
@@ -20,6 +36,7 @@ export const questions = [
     options: ["1995", "1999", "2004", "2010"],
     correct: 1,
     time: 10,
+    // image: "img/example.jpg",   // <- optional picture on the question
   },
   {
     text: "What is Salesforce's agentic AI platform called?",
@@ -40,10 +57,13 @@ export const questions = [
     time: 10,
   },
   {
-    // TODO VERIFY: set the correct shape/colour of the current Salesforce logo.
-    text: "What does the Salesforce logo depict?",
-    options: ["A lightning bolt", "A cloud", "A blue star", "A wave"],
-    correct: 1,
+    // TODO VERIFY: set the correct option / swap in real logo images.
+    // Example of the picture-as-answer style — drop 4 logo images in img/ and
+    // uncomment optionImages:
+    text: "Which of these is the Salesforce logo?",
+    options: ["Option A", "Option B", "Option C", "Option D"],
+    // optionImages: ["img/logo-a.png","img/logo-b.png","img/logo-c.png","img/logo-d.png"],
+    correct: 0,
     time: 10,
   },
   {

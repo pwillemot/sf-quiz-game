@@ -4,9 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
     <title>Salesforce Quiz — Play</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body class="player-body">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 130 60" xmlns="http://www.w3.org/2000/svg" aria-label="ArcelorMittal">
+            <path
+              d="M14 52 C 40 8, 96 0, 124 22 C 100 10, 58 20, 42 48 C 56 24, 84 22, 94 34 L 80 46"
+              fill="none" stroke="#f6651e" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"
+            />
+          </svg>
+          <span class="wordmark">ArcelorMittal</span>
+        </div>
+        <div class="brand-name">AI Inspiration Session</div>
+      </div>
+      <div class="top-user">Salesforce Quiz</div>
+    </div>
+
     <div id="app" class="player-main">
       <p class="muted">Loading…</p>
     </div>
@@ -53,16 +75,18 @@
         app.classList.remove("player-main");
         app.classList.add("player-join");
         app.innerHTML = `
-          <div class="center">
-            <div class="cloud-badge" style="justify-content:center">☁ Salesforce Quiz</div>
-            <h1 style="font-size:2rem">Join the game</h1>
-          </div>
-          ${errMsg ? `<p class="err">${escape(errMsg)}</p>` : ""}
-          <input class="field" id="pin" inputmode="numeric" maxlength="6"
-                 placeholder="Game PIN" value="${escape(prefillPin)}" />
-          <input class="field" id="name" maxlength="18" placeholder="Your name" />
-          <button class="btn-primary" id="go">Enter</button>
-          <p class="tiny center">The PIN is shown on the host screen.</p>`;
+          <div class="join-card">
+            <div class="center">
+              <div class="cloud-badge" style="justify-content:center">☁ Salesforce Quiz</div>
+              <h1 style="font-size:2rem;margin-bottom:0.2em">Join the game</h1>
+            </div>
+            ${errMsg ? `<p class="err">${escape(errMsg)}</p>` : ""}
+            <input class="field" id="pin" inputmode="numeric" maxlength="6"
+                   placeholder="Game PIN" value="${escape(prefillPin)}" />
+            <input class="field" id="name" maxlength="18" placeholder="Your name" />
+            <button class="btn-primary" id="go" style="width:100%">Enter</button>
+            <p class="tiny center">The PIN is shown on the host screen.</p>
+          </div>`;
         const nameEl = document.getElementById("name");
         if (prefillPin) nameEl.focus();
         document.getElementById("go").onclick = join;

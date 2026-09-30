@@ -4,9 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Salesforce Quiz — Host</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 130 60" xmlns="http://www.w3.org/2000/svg" aria-label="ArcelorMittal">
+            <path
+              d="M14 52 C 40 8, 96 0, 124 22 C 100 10, 58 20, 42 48 C 56 24, 84 22, 94 34 L 80 46"
+              fill="none" stroke="#f6651e" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"
+            />
+          </svg>
+          <span class="wordmark">ArcelorMittal</span>
+        </div>
+        <div class="brand-name">AI Inspiration Session</div>
+      </div>
+      <div class="top-user">Salesforce Quiz · Host</div>
+    </div>
+
     <div class="wrap" id="app">
       <p class="muted">Loading…</p>
     </div>
@@ -63,21 +85,17 @@
       function renderLobby() {
         const list = Object.values(players);
         app.innerHTML = `
-          <div class="host-top">
-            <div class="cloud-badge">☁ ${escape(QUIZ_TITLE)}</div>
-            <div class="pin-box">
-              <div class="label">Game PIN</div>
-              <div class="pin">${pin}</div>
-            </div>
+          <div class="lobby-title center">
+            <span class="cloud-badge" style="justify-content:center">☁ ${escape(QUIZ_TITLE)}</span>
+            <h1 class="gradient-text">${escape(QUIZ_TITLE)}</h1>
           </div>
           <div class="card center">
-            <h2>Scan to join</h2>
+            <h1 class="scan-heading">Scan to join</h1>
             <div class="join-panel">
               <div class="qr-holder" id="qr"></div>
-              <div>
-                <p class="muted">Or go to</p>
-                <div class="join-url">${escape(joinUrl)}</div>
-                <p class="muted mt">and enter PIN <b>${pin}</b></p>
+              <div class="pin-box">
+                <div class="label">Game PIN</div>
+                <div class="pin">${pin}</div>
               </div>
             </div>
             <div class="players" id="players">
@@ -99,7 +117,33 @@
         const el = document.getElementById("qr");
         if (!el || typeof QRCode === "undefined") return;
         el.innerHTML = "";
-        qr = new QRCode(el, { text, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+        qr = new QRCode(el, { text, width: 210, height: 210, correctLevel: QRCode.CorrectLevel.M });
+      }
+
+      // optional big picture above the answers
+      function questionImageHtml(q) {
+        return q.image
+          ? `<img class="q-image" src="${escapeAttr(q.image)}" alt="" />`
+          : "";
+      }
+
+      // one answer tile — supports text and/or an image option
+      function answerHtml(q, i, { extraClass = "", countHtml = "" } = {}) {
+        const hasImg = Array.isArray(q.optionImages) && q.optionImages[i];
+        const img = hasImg
+          ? `<img class="opt-img" src="${escapeAttr(q.optionImages[i])}" alt="" />`
+          : "";
+        const caption = q.options && q.options[i] ? q.options[i] : "";
+        const captionHtml = caption
+          ? `<span class="opt-caption">${escape(caption)}</span>`
+          : "";
+        return `
+          <div class="answer ${CLASSES[i]} ${hasImg ? "has-img" : ""} ${extraClass}" data-i="${i}">
+            <span class="glyph">${GLYPHS[i]}</span>
+            ${img}
+            ${captionHtml}
+            ${countHtml}
+          </div>`;
       }
 
       function renderQuestion(qIndex) {
@@ -110,13 +154,11 @@
             <div class="timer" id="timer">${q.time}</div>
           </div>
           <div class="q-text">${escape(q.text)}</div>
+          ${questionImageHtml(q)}
           <div class="answers" id="answers">
-            ${q.options.map((opt, i) => `
-              <div class="answer ${CLASSES[i]}" data-i="${i}">
-                <span class="glyph">${GLYPHS[i]}</span>
-                <span>${escape(opt)}</span>
-                <span class="count" data-count="${i}"></span>
-              </div>`).join("")}
+            ${q.options.map((_, i) =>
+              answerHtml(q, i, { countHtml: `<span class="count" data-count="${i}"></span>` })
+            ).join("")}
           </div>
           <div class="center mt">
             <span class="muted" id="answered">0 answers in</span>
@@ -139,13 +181,14 @@
             <div class="timer">✓</div>
           </div>
           <div class="q-text">${escape(q.text)}</div>
+          ${questionImageHtml(q)}
           <div class="answers">
-            ${q.options.map((opt, i) => `
-              <div class="answer ${CLASSES[i]} ${i === q.correct ? "correct" : "dim"}">
-                <span class="glyph">${GLYPHS[i]}</span>
-                <span>${escape(opt)}</span>
-                <span class="count">${counts[i]}</span>
-              </div>`).join("")}
+            ${q.options.map((_, i) =>
+              answerHtml(q, i, {
+                extraClass: i === q.correct ? "correct" : "dim",
+                countHtml: `<span class="count">${counts[i]}</span>`,
+              })
+            ).join("")}
           </div>
           <div class="center mt">
             <button class="btn-primary" id="lb">Show leaderboard →</button>
@@ -294,6 +337,12 @@
       function escape(s) {
         return String(s ?? "").replace(/[&<>"']/g, (c) => ({
           "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[c]));
+      }
+      // for use inside src="…" — encodes quotes so a path can't break the attribute
+      function escapeAttr(s) {
+        return String(s ?? "").replace(/["'<>]/g, (c) => ({
+          '"': "%22", "'": "%27", "<": "%3C", ">": "%3E",
         }[c]));
       }
 
