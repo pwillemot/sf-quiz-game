@@ -51,33 +51,33 @@ export const questions = [
     time: 10,
   },
   {
-    text: "What is the name of Salesforce's HQ tower in San Francisco?",
-    options: ["Salesforce Tower", "Dreamforce Tower", "Ohana Tower", "Benioff Tower"],
-    correct: 0,
-    time: 10,
-  },
-  {
-    // TODO VERIFY: set the correct option / swap in real logo images.
-    // Example of the picture-as-answer style — drop 4 logo images in img/ and
-    // uncomment optionImages:
-    text: "Which of these is the Salesforce logo?",
-    options: ["Option A", "Option B", "Option C", "Option D"],
-    // optionImages: ["img/logo-a.png","img/logo-b.png","img/logo-c.png","img/logo-d.png"],
-    correct: 0,
-    time: 10,
-  },
-  {
-    // TODO VERIFY: update to the current/internal name you want to quiz on.
-    text: "Headless 360 has been rebranded — what is its current name?",
-    options: ["Commerce Headless", "Composable Storefront", "Headless Cloud", "Storefront 360"],
+    text: "What does 'CRM' — the core solution category of Salesforce — stand for?",
+    options: [
+      "Coffee, Coffee, and More Coffee",
+      "Customer Relationship Management",
+      "Computer Record Manipulation",
+      "Centralized Revenue Machine",
+    ],
     correct: 1,
     time: 10,
   },
   {
-    // TODO VERIFY: approximate size of the SF office / Salesforce Tower — pick the figure you like.
-    text: "Roughly how tall is Salesforce Tower (its claim to fame in SF)?",
-    options: ["Tallest building in San Francisco", "Shortest tower downtown", "A single-storey office", "Underground bunker"],
-    correct: 0,
+    text: "Which of these is the real Salesforce logo?",
+    options: ["", "", "", ""],
+    optionImages: ["img/sf-logo-a.png", "img/sf-logo-b.png", "img/sf-logo-c.png", "img/sf-logo-d.png"],
+    correct: 2,
+    time: 10,
+  },
+  {
+    text: "Salesforce launched a free online learning platform so anyone can learn job skills. What is it called?",
+    options: ["Salesforce University", "Cloud Academy", "Trailhead", "SkillForce"],
+    correct: 2,
+    time: 10,
+  },
+  {
+    text: "Which famous TV streaming network did Salesforce create to broadcast original business shows, live events, and career-inspiring stories?",
+    options: ["CloudFlix", "Salesforce+", "Force TV", "Ohana Prime"],
+    correct: 1,
     time: 10,
   },
 ];
