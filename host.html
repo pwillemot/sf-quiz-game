@@ -159,6 +159,9 @@
             ${q.options.map((_, i) =>
               answerHtml(q, i, { countHtml: `<span class="count" data-count="${i}"></span>` })
             ).join("")}
+          </div>
+          <div class="center mt">
+            <span class="muted" id="answered">0 answers in</span>
           </div>`;
         runTimer(qIndex, q.time);
         watchAnswers(qIndex);
@@ -272,8 +275,12 @@
         answersUnsub = onValue(answersRef(pin, qIndex), (snap) => {
           const answers = snap.val() || {};
           revealCache[qIndex] = answers;
-          // everyone answered -> end early (no on-screen counter shown)
+          const answeredEl = document.getElementById("answered");
           const n = Object.keys(answers).length;
+          if (answeredEl) {
+            answeredEl.textContent = `${n} / ${total} answered`;
+          }
+          // everyone answered -> end early
           if (total > 0 && n >= total && tickHandle) {
             clearInterval(tickHandle);
             tickHandle = null;
