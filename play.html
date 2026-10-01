@@ -187,17 +187,14 @@
       }
 
       function renderReveal(qIndex) {
-        const q = questions[qIndex];
-        const gotIt = myChoice === q.correct;
         const answered = myChoice !== -1;
         app.innerHTML = `
-          <div class="big-msg ${answered ? (gotIt ? "result-correct" : "result-wrong") : ""}">
+          <div class="player-status">${escape(name)}</div>
+          <div class="big-msg">
             ${
-              !answered
-                ? "⏱ Too slow!<br/>The answer was <b>" + GLYPHS[q.correct] + "</b>"
-                : gotIt
-                ? "✅ Correct!"
-                : "❌ Not this time.<br/>It was <b>" + GLYPHS[q.correct] + "</b>"
+              answered
+                ? "Answer locked in ✔<br/>👀 Look at the big screen!"
+                : "⏱ Time's up!<br/>👀 Look at the big screen!"
             }
           </div>`;
       }
